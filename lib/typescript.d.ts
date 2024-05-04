@@ -5526,6 +5526,7 @@ declare namespace ts {
         HexSpecifier = 64,
         BinarySpecifier = 128,
         OctalSpecifier = 256,
+        enteringTSComment = 32768,
     }
     interface NumericLiteral extends LiteralExpression, Declaration {
         readonly kind: SyntaxKind.NumericLiteral;
@@ -7525,6 +7526,8 @@ declare namespace ts {
     }
     type CompilerOptionsValue = string | number | boolean | (string | number)[] | string[] | MapLike<string[]> | PluginImport[] | ProjectReference[] | null | undefined;
     interface CompilerOptions {
+        buildlessEject?: boolean;
+        buildlessConvert?: boolean;
         allowImportingTsExtensions?: boolean;
         allowJs?: boolean;
         allowArbitraryExtensions?: boolean;
@@ -8893,6 +8896,87 @@ declare namespace ts {
     function isIdentifierStart(ch: number, languageVersion: ScriptTarget | undefined): boolean;
     function isIdentifierPart(ch: number, languageVersion: ScriptTarget | undefined, identifierVariant?: LanguageVariant): boolean;
     function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean, languageVariant?: LanguageVariant, textInitial?: string, onError?: ErrorCallback, start?: number, length?: number): Scanner;
+    function createTSCommentScanner({ text }: SourceFileLike, options: CompilerOptions, _pos?: number, _state?: TSCommentScannerState, _delimiterPositions?: BlockCommentDelimiterPositions): {
+        getCurrentPos(): number;
+        /**
+         * The state of the scanner is cloned, so you can move forwards with the clone to inspect something in the future
+         * without effecting the current scanner.
+         * (with some exceptions for tracking information that's needed for code transformations)
+         */
+        clone(): any;
+        /**
+         * Scans from where we left off to the start of this node.
+         * Then continues scanning into the node until non-whitespace, non-comments are hit,
+         * at which point the scanner position will just jump to the end of the node.
+         * This is only smart enough to scan through whitespace and comments - if it
+         * were to receive something like `'/*'`, it would get tripped up. This means
+         * that scanToNode() should be called, in order, on every leaf node in a file.
+         *
+         * It is designed to be safe (and do nothing) if you re-scan the same node multiple times.
+         *
+         * @returns true if the just-scanned node was inside a TS comment, otherwise returns false.
+         *          Also returns false when given a node that couldn't be scanned, because the scanner already passed that point.
+         */
+        scanThroughLeafNode(node: {
+            kind: SyntaxKind;
+            pos: number;
+            end: number;
+        }): boolean;
+        /**
+         * Scans to the provided position.
+         * First is scans past any whitespace and normal comments to find where significant text starts, then it'll
+         * scan through the significant text until it reaches the end.
+         * Once it finds significant text, all text going forwards is treated as significant.
+         *
+         * @returns true if the scanned significant text was in TypeScript comments, otherwise returns false.
+         *          Also returns false when nothing could be scanned, because the scanner already passed that point.
+         */
+        scanTo(end: number): boolean;
+        /**
+         * Stops scanning as soon as non-whitespace/not-generic-comment character is encountered.
+         * @param max Mostly a failsafe - if something goes wrong, we'll stop jumping at this point.
+         *
+         * @return true if in TS comment where it stopped at, which typically means the following node is in a TypeScript comment.
+         *         Otherwise, returns false. Also returns false when nothing could be scanned, because the scanner already passed that point.
+         */
+        scanUntilNextSignificantChar(max: number): boolean;
+        /**
+         * @param char The character(s) to break on. whitespace and characters found as part of comments won't be matched.
+         * @param max Mostly a failsafe - if something goes wrong, we'll stop jumping at this point.
+         */
+        scanUntilAtChar(char: string | string[], max: number): void;
+        /**
+         * @param char The character(s) to break on. whitespace and characters found as part of comments won't be matched.
+         * @param max Mostly a failsafe - if something goes wrong, we'll stop jumping at this point.
+         */
+        scanUntilPastChar(char: string | string[], max: number): void;
+        getBlockCommentDelimiters(): Map<number, BlockCommentDelimiterType>;
+        /**
+         * Returns all TS-comment pairs in the file.
+         * Prerequisites:
+         * - The --buildlessEject or --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
+         * - The whole source file has been scanned.
+         */
+        getTSCommentPositions(): TSCommentPosition[];
+    };
+    /**
+     * Tracks which spans in a file pertain to TypeScript syntax.
+     * This is used to convert TypeScript files to JavaScript + TS comments.
+     */
+    function createTSSyntaxTracker({ text }: SourceFileLike, options: CompilerOptions): {
+        /**
+         * This range is TypeScript syntax, and if we're converting TS to buildless JS files,
+         * this range should be moved into TS comments.
+         * whitespace/comments will be skipped to find the true start.
+         */
+        markRangeAsTS(start: number, end: number): void;
+        /**
+         * Returns the positions of all TS nodes in the file.
+         * Prerequisites:
+         * - The --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
+         */
+        getTSNodePositions(): TSNodePosition[];
+    };
     type ErrorCallback = (message: DiagnosticMessage, length: number, arg0?: any) => void;
     interface Scanner {
         /** @deprecated use {@link getTokenFullStart} */
@@ -8944,6 +9028,26 @@ declare namespace ts {
         scanRange<T>(start: number, length: number, callback: () => T): T;
         tryScan<T>(callback: () => T): T;
     }
+    enum BlockCommentDelimiterType {
+        openNonTSComment = 0,
+        openTSCommentWithoutColons = 1,
+        singleColonForOpenTSComment = 2,
+        doubleColonForOpenTSComment = 3,
+        close = 4,
+    }
+    interface TSCommentPosition {
+        open: number;
+        colonPos: number;
+        close: number;
+        colonCount: 1 | 2;
+        containedInnerOpeningBlockComment: boolean;
+    }
+    interface TSNodePosition {
+        start: number;
+        end: number;
+    }
+    type TSCommentScanner = ReturnType<typeof createTSCommentScanner>;
+    type TSSyntaxTracker = ReturnType<typeof createTSSyntaxTracker>;
     function isExternalModuleNameRelative(moduleName: string): boolean;
     function sortAndDeduplicateDiagnostics<T extends Diagnostic>(diagnostics: readonly T[]): SortedReadonlyArray<T>;
     function getDefaultLibFileName(options: CompilerOptions): string;
@@ -9589,6 +9693,15 @@ declare namespace ts {
      * that they appear in the source code. The language service depends on this property to locate nodes by position.
      */
     function forEachChild<T>(node: Node, cbNode: (node: Node) => T | undefined, cbNodes?: (nodes: NodeArray<Node>) => T | undefined): T | undefined;
+    /**
+     * The definition of a leaf node isn't super precise here.
+     * For example, an empty object could be thought of as a leaf node since it doesn't have any children,
+     * but this function would claim that it isn't a leaf node.
+     * For the purposes of how this function gets used,
+     * what's important is that it won't ever claim that a node that has children is a leaf node.
+     * Other types of minor errors are fine.
+     */
+    function isLeafNode(node: Node): boolean;
     function createSourceFile(fileName: string, sourceText: string, languageVersionOrOptions: ScriptTarget | CreateSourceFileOptions, setParentNodes?: boolean, scriptKind?: ScriptKind): SourceFile;
     function parseIsolatedEntityName(text: string, languageVersion: ScriptTarget): EntityName | undefined;
     /**

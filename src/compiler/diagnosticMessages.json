@@ -1,4 +1,20 @@
 {
+    "Buildless TypeScript Options": {
+        "category": "Message",
+        "code": 99900
+    },
+    "Convert your TypeScript projects into a JavaScript one, with all TypeScript syntax moved into TypeScript comments.": {
+        "category": "Message",
+        "code": 99901
+    },
+    "Eject your project, converting all JS files into TS files.": {
+        "category": "Message",
+        "code": 99902
+    },
+    "Can not combine --buildlessEject with --buildlessConvert.": {
+        "category": "Error",
+        "code": 99903
+    },
     "Unterminated string literal.": {
         "category": "Error",
         "code": 1002

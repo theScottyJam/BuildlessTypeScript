@@ -344,6 +344,26 @@ export const commonOptionsWithBuild: CommandLineOption[] = [
         category: Diagnostics.Command_line_Options,
         defaultValueDescription: false,
     },
+    // BUILDLESS: <added>
+    {
+        name: "buildlessConvert",
+        type: "boolean",
+        showInSimplifiedHelpView: true,
+        isCommandLineOnly: true,
+        category: Diagnostics.Buildless_TypeScript_Options,
+        description: Diagnostics.Convert_your_TypeScript_projects_into_a_JavaScript_one_with_all_TypeScript_syntax_moved_into_TypeScript_comments,
+        defaultValueDescription: false,
+    },
+    {
+        name: "buildlessEject",
+        type: "boolean",
+        showInSimplifiedHelpView: true,
+        isCommandLineOnly: true,
+        category: Diagnostics.Buildless_TypeScript_Options,
+        description: Diagnostics.Eject_your_project_converting_all_JS_files_into_TS_files,
+        defaultValueDescription: false,
+    },
+    // BUILDLESS: </added>
     {
         name: "watch",
         shortName: "w",

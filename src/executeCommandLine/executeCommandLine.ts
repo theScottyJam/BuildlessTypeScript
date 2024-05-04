@@ -913,11 +913,21 @@ function performCompilation(
         configFileParsingDiagnostics: getConfigFileParsingDiagnostics(config),
     };
     const program = createProgram(programOptions);
+    // BUILDLESS: <added>
+    if (config.options.buildlessEject && config.options.buildlessConvert) {
+        reportDiagnostic(createCompilerDiagnostic(Diagnostics.Can_not_combine_buildlessEject_with_buildlessConvert));
+        return sys.exit(ExitStatus.DiagnosticsPresent_OutputsSkipped);
+    }
+    const transformProject = config.options.buildlessEject || config.options.buildlessConvert;
+    if (transformProject) {
+        reportDiagnostic = (() => {});
+    }
+    // BUILDLESS: </added>
     const exitStatus = emitFilesAndReportErrorsAndGetExitStatus(
         program,
         reportDiagnostic,
         s => sys.write(s + sys.newLine),
-        createReportErrorSummary(sys, options),
+        transformProject ? (() => {}) : createReportErrorSummary(sys, options), // BUILDLESS: modified
     );
     reportStatistics(sys, program, /*solutionPerformance*/ undefined);
     cb(program);
