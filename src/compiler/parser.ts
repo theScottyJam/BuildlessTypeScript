@@ -1239,6 +1239,20 @@ export function forEachChild<T>(node: Node, cbNode: (node: Node) => T | undefine
     return fn === undefined ? undefined : fn(node, cbNode, cbNodes);
 }
 
+// BUILDLESS: <added>
+/**
+ * The definition of a leaf node isn't super precise here.
+ * For example, an empty object could be thought of as a leaf node since it doesn't have any children,
+ * but this function would claim that it isn't a leaf node.
+ * For the purposes of how this function gets used,
+ * what's important is that it won't ever claim that a node that has children is a leaf node.
+ * Other types of minor errors are fine.
+ */
+export function isLeafNode(node: Node) {
+    return (forEachChildTable as Record<SyntaxKind, ForEachChildFunction<any>>)[node.kind] === undefined;
+}
+// BUILDLESS: </added>
+
 /**
  * Invokes a callback for each child of the given node. The 'cbNode' callback is invoked for all child nodes
  * stored in properties. If a 'cbNodes' callback is specified, it is invoked for embedded arrays; additionally,
@@ -5225,6 +5239,7 @@ namespace Parser {
             }
         }
 
+        const firstTokenPrecededByOpeningTSComment = (scanner.getTokenFlags() & TokenFlags.enteringTSComment) !== 0; // BUILDLESS: added
         const first = token();
         const second = nextToken();
 
@@ -5311,7 +5326,7 @@ namespace Parser {
             }
 
             // JSX overrides
-            if (languageVariant === LanguageVariant.JSX) {
+            if (languageVariant === LanguageVariant.JSX && !firstTokenPrecededByOpeningTSComment) { // BUILDLESS: modified
                 const isArrowFunctionInJsx = lookAhead(() => {
                     parseOptional(SyntaxKind.ConstKeyword);
                     const third = nextToken();
@@ -6515,7 +6530,7 @@ namespace Parser {
     }
 
     function parseTypeArgumentsInExpression() {
-        if ((contextFlags & NodeFlags.JavaScriptFile) !== 0) {
+        if ((contextFlags & NodeFlags.JavaScriptFile) !== 0 && (scanner.getTokenFlags() & TokenFlags.enteringTSComment) === 0) { // BUILDLESS: modified
             // TypeArguments must not be parsed in JavaScript files to avoid ambiguity with binary operators.
             return undefined;
         }

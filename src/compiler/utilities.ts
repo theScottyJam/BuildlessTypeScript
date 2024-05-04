@@ -4886,13 +4886,15 @@ export function getClassExtendsHeritageElement(node: ClassLikeDeclaration | Inte
 
 /** @internal */
 export function getEffectiveImplementsTypeNodes(node: ClassLikeDeclaration): undefined | readonly ExpressionWithTypeArguments[] {
-    if (isInJSFile(node)) {
+    // BUILDLESS: <modified>
+    const heritageClause = getHeritageClause(node.heritageClauses, SyntaxKind.ImplementsKeyword);
+    const result = heritageClause?.types;
+    // fall back to jsdocs if its a TypeScript file
+    if (result === undefined && isInJSFile(node)) {
         return getJSDocImplementsTags(node).map(n => n.class);
     }
-    else {
-        const heritageClause = getHeritageClause(node.heritageClauses, SyntaxKind.ImplementsKeyword);
-        return heritageClause?.types;
-    }
+    return result;
+    // BUILDLESS: </modified>
 }
 
 /**

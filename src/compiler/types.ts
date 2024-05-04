@@ -37,7 +37,7 @@ export interface ReadonlyTextRange {
 
 // token > SyntaxKind.Identifier => token is a keyword
 // Also, If you add a new SyntaxKind be sure to keep the `Markers` section at the bottom in sync
-export const enum SyntaxKind {
+export const enum SyntaxKind { // BUILDLESS: DEBUG: comment-scan - Take out the "const" keyword to allow more helpful logs.
     Unknown,
     EndOfFileToken,
     SingleLineCommentTrivia,
@@ -2790,6 +2790,9 @@ export const enum TokenFlags {
     ContainsLeadingZero = 1 << 13,      // e.g. `0888`
     /** @internal */
     ContainsInvalidSeparator = 1 << 14, // e.g. `0_1`
+    // BUILDLESS: <added>
+    enteringTSComment = 1 << 15,        // This bit is set if, just before this token, we entered a TS comment.
+    // BUILDLESS: </added>
     /** @internal */
     BinaryOrOctalSpecifier = BinarySpecifier | OctalSpecifier,
     /** @internal */
@@ -7130,6 +7133,10 @@ export enum PollingWatchKind {
 export type CompilerOptionsValue = string | number | boolean | (string | number)[] | string[] | MapLike<string[]> | PluginImport[] | ProjectReference[] | null | undefined;
 
 export interface CompilerOptions {
+    // BUILDLESS: <added>
+    buildlessEject?: boolean;
+    buildlessConvert?: boolean;
+    // BUILDLESS: </added>
     /** @internal */ all?: boolean;
     allowImportingTsExtensions?: boolean;
     allowJs?: boolean;

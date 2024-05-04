@@ -1,23 +1,23 @@
 {
-    "name": "typescript",
-    "author": "Microsoft Corp.",
-    "homepage": "https://www.typescriptlang.org/",
-    "version": "5.4.5",
+    "name": "buildlesstypescript",
+    "author": "Scotty Jamison",
+    "version": "500.400.500",
     "license": "Apache-2.0",
-    "description": "TypeScript is a language for application scale JavaScript development",
+    "description": "Run TypeScript without a build step by placing TypeScript syntax inside of comments.",
     "keywords": [
         "TypeScript",
         "Microsoft",
         "compiler",
         "language",
-        "javascript"
+        "javascript",
+        "build"
     ],
     "bugs": {
-        "url": "https://github.com/Microsoft/TypeScript/issues"
+        "url": "https://github.com/theScottyJam/BuildlessTypeScript/issues"
     },
     "repository": {
         "type": "git",
-        "url": "https://github.com/Microsoft/TypeScript.git"
+        "url": "https://github.com/theScottyJam/BuildlessTypeScript.git"
     },
     "main": "./lib/typescript.js",
     "typings": "./lib/typescript.d.ts",
