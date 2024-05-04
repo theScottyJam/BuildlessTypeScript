@@ -163,6 +163,24 @@ Known limitations. There are currently no plans to change these - mostly in an e
 
 ## Q&A
 
+### Why?
+
+A tool like this isn't for everyone, but there is a growing appetite for using TypeScript without a build step during development - there's been a number of projects who have moved to putting all types inside of JSDocs instead of ts files for precisely this reason. And yes, its true that many projects will still need some sort of build step for the production build (e.g. to minify the code) - this project focuses solely on removing the build step during development.
+
+The reasons why its nice to not have a build step:
+* You don't have to deal with mapping files, which don't always work great.
+* Faster execution time - if you want to run your code, you can just run it. ts-node can be fairly slow.
+* Configuration can sometimes be quite difficult.
+
+JSDocs have their own issues:
+* They're very verbose to use
+* They use syntax that's different from TypeScript, which increases their learning curve.
+* They don't support all of TypeScript syntax.
+
+Microsoft recognizes that the build step isn't ideal - they made [a whole JavaScript proposal](https://github.com/tc39/proposal-type-annotations) to try and convince the EcmaScript committee to allow us to write TypeScript without a build step - JavaScript engines would just ignore the TypeScript syntax. We'll see if that proposal makes any progress or not.
+
+This is actually prior art for this sort of thing as well - [Flow will do something very similar](https://flow.org/en/docs/types/comments/) - if you don't want to have a compile step, you can put your Flow syntax in `/*:: ... */` and `/*: ... */` comments in the same.
+
 ### How do you write JSDoc comments inside of a TS comment?
 
 For example, say you are defining an interface and you'd like to document some of its properties. In TypeScript you would be able to write the following:
@@ -191,7 +209,7 @@ interface User {
 
 ### What's up with the huge version numbers?
 
-This project's version numbers can be parsed as follows - If you omit the last two digits of each segment, you will get a TypeScript version number, so a Buildless TypeScript version number of `500.301.304` really means "TypeScript version 5.1.4". The remaining digits are to allow Buildless TypeScript to release semver compatible releases between TypeScript versions. With the ``500.301.304`` example again, that version number says that `4` patch releases and `1` minor release have come out for this tool since it provided the TypeScript `5.1.4` release. Every time this fork incorporates a new TypeScript version, it will reset the last two digits back to `00`.
+This project's version numbers can be parsed as follows - If you omit the last two digits of each segment, you will get a TypeScript version number, so a Buildless TypeScript version number of `500.301.304` really means "TypeScript version 5.1.4". The remaining digits are to allow Buildless TypeScript to release semver compatible releases between TypeScript versions. With the ``500.301.304`` example again, that version number says that `4` patch releases and `1` minor release have come out for this tool since it provided the TypeScript `5.3.3` release. Every time this fork incorporates a new TypeScript version, it will reset the last two digits back to `00`.
 
 ### How should I format the TS comments?
 
