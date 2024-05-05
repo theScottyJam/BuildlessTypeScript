@@ -1,7 +1,7 @@
 {
     "name": "buildlesstypescript",
     "author": "Scotty Jamison",
-    "version": "500.400.501",
+    "version": "500.400.502",
     "license": "Apache-2.0",
     "description": "Run TypeScript without a build step by placing TypeScript syntax inside of comments.",
     "keywords": [
