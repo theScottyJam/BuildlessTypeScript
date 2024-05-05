@@ -209,7 +209,7 @@ interface User {
 
 ### What's up with the huge version numbers?
 
-This project's version numbers can be parsed as follows - If you omit the last two digits of each segment, you will get a TypeScript version number, so a Buildless TypeScript version number of `500.301.304` really means "TypeScript version 5.1.4". The remaining digits are to allow Buildless TypeScript to release semver compatible releases between TypeScript versions. With the ``500.301.304`` example again, that version number says that `4` patch releases and `1` minor release have come out for this tool since it provided the TypeScript `5.3.3` release. Every time this fork incorporates a new TypeScript version, it will reset the last two digits back to `00`.
+This project's version numbers can be parsed as follows - If you omit the last two digits of each segment, you will get a TypeScript version number, so a Buildless TypeScript version number of `500.301.304` really means "TypeScript version 5.3.3". The remaining digits are to allow Buildless TypeScript to release semver compatible releases between TypeScript versions. With the ``500.301.304`` example again, that version number says that `4` patch releases and `1` minor release have come out for this tool since it provided the TypeScript `5.3.3` release. Every time this fork incorporates a new TypeScript version, it will reset the last two digits back to `00`.
 
 ### How should I format the TS comments?
 
