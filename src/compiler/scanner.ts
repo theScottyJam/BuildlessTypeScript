@@ -8,7 +8,6 @@ import {
     CommentKind,
     CommentRange,
     compareValues,
-    CompilerOptions, // BUILDLESS: added
     Debug,
     DiagnosticMessage,
     Diagnostics,
@@ -2976,21 +2975,21 @@ export function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean
 }
 
 // BUILDLESS: <added>
-const enum TSCommentScannerState {
+const enum TsCommentScannerState {
     notInComment,
     inBlockComment,
     inTSBlockComment,
 }
 
 export const enum BlockCommentDelimiterType {
-    openNonTSComment, // A `/*` not followed by colons
-    openTSCommentWithoutColons, // Just the `/*` part of `/*:` or `/*::`.
-    singleColonForOpenTSComment, // Just the `:` part of `/*:`
-    doubleColonForOpenTSComment, // Just the `::` part of `/*::`
+    openNonTsComment, // A `/*` not followed by colons
+    openTsCommentWithoutColons, // Just the `/*` part of `/*:` or `/*::`.
+    singleColonForOpenTsComment, // Just the `:` part of `/*:`
+    doubleColonForOpenTsComment, // Just the `::` part of `/*::`
     close, // Any `*/`, even if it pertains to a non-TS comment.
 }
 
-export interface TSCommentPosition {
+export interface TsCommentPosition {
     open: number
     colonPos: number
     close: number
@@ -3000,9 +2999,16 @@ export interface TSCommentPosition {
     containedInnerOpeningBlockComment: boolean
 }
 
-export interface TSNodePosition {
+export const enum SyntaxRangeType {
+    typeScript,
+    javaScript,
+    whitespace,
+}
+
+export interface SyntaxRange {
     start: number
     end: number
+    type: SyntaxRangeType
 }
 
 // Records the position of interesting comment-related information.
@@ -3012,13 +3018,12 @@ type BlockCommentDelimiterPositions = Map<number, BlockCommentDelimiterType>
 
 export function createTSCommentScanner(
     { text }: SourceFileLike,
-    options: CompilerOptions,
     _pos?: number,
-    _state?: TSCommentScannerState,
+    _state?: TsCommentScannerState,
     _delimiterPositions?: BlockCommentDelimiterPositions,
 ) {
     let pos = _pos ?? 0;
-    let state = _state ?? TSCommentScannerState.notInComment;
+    let state = _state ?? TsCommentScannerState.notInComment;
     // This is a shared value that all clones share and mutate.
     // Used for converting JS files to TS.
     const delimiterPositions: BlockCommentDelimiterPositions = _delimiterPositions ?? new Map();
@@ -3033,7 +3038,7 @@ export function createTSCommentScanner(
          */
         clone() {
             // console.log(`CLONING SCANNER - expect duplicate scans past this point.`) // BUILDLESS: DEBUG: comment-scan
-            return createTSCommentScanner({ text }, options, pos, state, _delimiterPositions);
+            return createTSCommentScanner({ text }, pos, state, _delimiterPositions);
         },
         /**
          * Scans from where we left off to the start of this node.
@@ -3054,7 +3059,7 @@ export function createTSCommentScanner(
             commentScan(text, pos, node.pos, /*stopOnSignificantText*/ false, onCommentDelimiter);
             commentScan(text, node.pos, node.end, /*stopOnSignificantText*/ true, onCommentDelimiter);
             pos = node.end;
-            return state === TSCommentScannerState.inTSBlockComment;
+            return state === TsCommentScannerState.inTSBlockComment;
         },
         /**
          * Scans to the provided position.
@@ -3069,7 +3074,7 @@ export function createTSCommentScanner(
             // console.log(`SCAN to ${end}.${end < pos ? ' FAIL' : ''}`) // BUILDLESS: DEBUG: comment-scan
             if (end < pos) return false;
             const significantTextAt = commentScan(text, pos, end, /*stopOnSignificantText*/ true, onCommentDelimiter);
-            let allInTSComment = state === TSCommentScannerState.inTSBlockComment;
+            let allInTSComment = state === TsCommentScannerState.inTSBlockComment;
             commentScan(text, significantTextAt, end, /*stopOnSignificantText*/ false, (pos, commentDelimiterType) => {
                 allInTSComment = false;
                 onCommentDelimiter(pos, commentDelimiterType);
@@ -3088,7 +3093,7 @@ export function createTSCommentScanner(
             // console.log(`SCAN UNTIL NEXT SIGNIFICANT CHAR (max: ${max})${max < pos ? ' FAIL' : ''}`); // BUILDLESS: DEBUG: comment-scan
             if (max < pos) return false;
             commentScan(text, pos, max, /*stopOnSignificantText*/ true, onCommentDelimiter);
-            return state === TSCommentScannerState.inTSBlockComment;
+            return state === TsCommentScannerState.inTSBlockComment;
         },
         /**
          * @param char The character(s) to break on. whitespace and characters found as part of comments won't be matched.
@@ -3126,34 +3131,33 @@ export function createTSCommentScanner(
         /**
          * Returns all TS-comment pairs in the file.
          * Prerequisites:
-         * - The --buildlessEject or --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
          * - The whole source file has been scanned.
          */
-        getTSCommentPositions(): TSCommentPosition[] {
-            const result: TSCommentPosition[] = [];
+        getTSCommentPositions(): TsCommentPosition[] {
+            const result: TsCommentPosition[] = [];
             const delimiters = [...delimiterPositions]
                 .map(([pos, delimiterType]) => ({ pos, type: delimiterType }))
                 .sort((a, b) => a.pos - b.pos);
             
-            let tsCommentPosition: Partial<TSCommentPosition> = {
+            let tsCommentPosition: Partial<TsCommentPosition> = {
                 containedInnerOpeningBlockComment: false
             };
             let inTSComment = false;
             for (const delimiter of delimiters) {
-                if (!inTSComment && delimiter.type === BlockCommentDelimiterType.openTSCommentWithoutColons) {
+                if (!inTSComment && delimiter.type === BlockCommentDelimiterType.openTsCommentWithoutColons) {
                     tsCommentPosition.open = delimiter.pos;
                     inTSComment = true;
-                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.singleColonForOpenTSComment) {
+                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.singleColonForOpenTsComment) {
                     tsCommentPosition.colonPos = delimiter.pos;
                     tsCommentPosition.colonCount = 1;
-                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.doubleColonForOpenTSComment) {
+                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.doubleColonForOpenTsComment) {
                     tsCommentPosition.colonPos = delimiter.pos;
                     tsCommentPosition.colonCount = 2;
-                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.openNonTSComment) {
+                } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.openNonTsComment) {
                     tsCommentPosition.containedInnerOpeningBlockComment = true;
                 } else if (inTSComment && delimiter.type === BlockCommentDelimiterType.close) {
                     tsCommentPosition.close = delimiter.pos;
-                    result.push(tsCommentPosition as TSCommentPosition);
+                    result.push(tsCommentPosition as TsCommentPosition);
                     tsCommentPosition = {
                         containedInnerOpeningBlockComment: false
                     };
@@ -3166,16 +3170,13 @@ export function createTSCommentScanner(
     };
 
     function onCommentDelimiter(at: number, commentDelimiterType: BlockCommentDelimiterType) {
-        if (options.buildlessEject || options.buildlessConvert) {
-            delimiterPositions.set(at, commentDelimiterType);
-        }
-
+        delimiterPositions.set(at, commentDelimiterType);
         if (commentDelimiterType === BlockCommentDelimiterType.close) {
-            state = TSCommentScannerState.notInComment;
-        } else if (commentDelimiterType === BlockCommentDelimiterType.openTSCommentWithoutColons) {
-            state = TSCommentScannerState.inTSBlockComment
-        } else if (commentDelimiterType === BlockCommentDelimiterType.openNonTSComment) {
-            state = TSCommentScannerState.inBlockComment;
+            state = TsCommentScannerState.notInComment;
+        } else if (commentDelimiterType === BlockCommentDelimiterType.openTsCommentWithoutColons) {
+            state = TsCommentScannerState.inTSBlockComment
+        } else if (commentDelimiterType === BlockCommentDelimiterType.openNonTsComment) {
+            state = TsCommentScannerState.inBlockComment;
         }
     }
 
@@ -3186,42 +3187,75 @@ export function createTSCommentScanner(
  * Tracks which spans in a file pertain to TypeScript syntax.
  * This is used to convert TypeScript files to JavaScript + TS comments.
  */
-export function createTSSyntaxTracker({ text }: SourceFileLike, options: CompilerOptions) {
-    const tsNodePositions: TSNodePosition[] = [];
+export function createTSSyntaxTracker({ text }: SourceFileLike) {
+    const whitespaceSyntaxRanges: SyntaxRange[] = [];
+    const tsSyntaxRanges: SyntaxRange[] = [];
     return {
         /**
          * This range is TypeScript syntax, and if we're converting TS to buildless JS files,
          * this range should be moved into TS comments.
-         * whitespace/comments will be skipped to find the true start.
+         * whitespace/comments at the start will get recorded as whitespace.
          */
-        markRangeAsTS(start: number, end: number) {
-            if (options.buildlessConvert) {
-                // Skip past whitespace/comments
-                // console.log('(iterating as part of mark-range-as-ts - this does not alter a scanner instance)'); // BUILDLESS: DEBUG: comment-scan
-                const realStart = commentScan(text, start, end, /*stopOnSignificantText*/ true);
-                // console.log(`Mark TypeScript range - from ${realStart} to ${end} (original start: ${start})`); // BUILDLESS: DEBUG: comment-scan
-                tsNodePositions.push({ start: realStart, end });
+        skipWhitespaceThenMarkRangeAsTS(start: number, end: number) {
+            // Skip past whitespace/comments
+            // console.log('(iterating as part of mark-range-as-ts - this does not alter a scanner instance)'); // BUILDLESS: DEBUG: comment-scan
+            const realStart = commentScan(text, start, end, /*stopOnSignificantText*/ true);
+            if (start < realStart) {
+                whitespaceSyntaxRanges.push({ start, end: realStart, type: SyntaxRangeType.whitespace });
+            }
+            // console.log(`Mark TypeScript range - from ${realStart} to ${end} (original start: ${start})`); // BUILDLESS: DEBUG: comment-scan
+            if (realStart < end) {
+                tsSyntaxRanges.push({ start: realStart, end, type: SyntaxRangeType.typeScript });
             }
         },
         /**
-         * Returns the positions of all TS nodes in the file.
-         * Prerequisites:
-         * - The --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
+         * Returns where all TypeScript and JavaScript syntax is located in the file.
+         * The returned ranges will either be marked as a TypeScript range or a JavaScript range.
+         * Ranges of whitespace won't be returned.
          */
-        getTSNodePositions(): TSNodePosition[] {
-            if (tsNodePositions.length === 0) return [];
-            tsNodePositions.sort((a, b) => a.start - b.start);
-            const newTSNodePositions: TSNodePosition[] = [tsNodePositions.shift()!];
-            for (const nodePosition of tsNodePositions) {
-                const last = newTSNodePositions.at(-1)!;
-                if (nodePosition.start > last.end) {
-                    newTSNodePositions.push({ ...nodePosition });
-                } else {
-                    Debug.assertGreaterThanOrEqual(nodePosition.start, last.start);
-                    last.end = Math.max(last.end, nodePosition.end);
+        *getSyntaxRanges(): Generator<SyntaxRange> {
+            tsSyntaxRanges.sort((a, b) => a.start - b.start);
+            whitespaceSyntaxRanges.sort((a, b) => a.start - b.start);
+
+            let whitespaceRangeIndex = 0;
+            let tsRangeIndex = 0;
+            let pos = 0;
+            while (pos < text.length) {
+                const whitespaceStart = whitespaceSyntaxRanges[whitespaceRangeIndex]?.start ?? Infinity;
+                const tsStart = tsSyntaxRanges[tsRangeIndex]?.start ?? Infinity;
+
+                if (pos === tsStart) {
+                    let end = -Infinity;
+                    // Merge overlapping TS ranges
+                    while (true) {
+                        end = Math.max(end, tsSyntaxRanges[tsRangeIndex].end);
+                        tsRangeIndex++;
+                        if (tsSyntaxRanges[tsRangeIndex] === undefined || tsSyntaxRanges[tsRangeIndex].start > end) {
+                            break;
+                        }
+                    }
+                    yield { start: tsStart, end, type: SyntaxRangeType.typeScript };
+                    pos = end;
+                }
+                // `pos` might be past `whitespaceStart` because we may have found a TS range in
+                // the middle of this whitespace range and TS ranges trump whitespace ranges.
+                // This would eventually place `pos` right after the TS range,
+                // which is in the middle of the whitespace range.
+                else if (pos >= whitespaceStart) {
+                    const whitespaceEnd = whitespaceSyntaxRanges[whitespaceRangeIndex].end;
+                    if (whitespaceEnd < tsStart) {
+                        pos = Math.max(pos, whitespaceEnd);
+                        whitespaceRangeIndex++;
+                    } else {
+                        pos = tsStart;
+                    }
+                }
+                else {
+                    const end = Math.min(tsStart, whitespaceStart, text.length);
+                    yield { start: pos, end, type: SyntaxRangeType.javaScript };
+                    pos = end;
                 }
             }
-            return newTSNodePositions;
         },
     };
 }
@@ -3331,12 +3365,12 @@ function commentScan(text: string, start: number, end: number, stopOnSignificant
                             3; // Represents 3 or more
                         
                         if (colonCount === 1 || colonCount === 2) {
-                            onCommentDelimiter?.(saveStartPos, BlockCommentDelimiterType.openTSCommentWithoutColons)
+                            onCommentDelimiter?.(saveStartPos, BlockCommentDelimiterType.openTsCommentWithoutColons)
                             onCommentDelimiter?.(
                                 pos,
                                 colonCount === 1
-                                    ? BlockCommentDelimiterType.singleColonForOpenTSComment
-                                    : BlockCommentDelimiterType.doubleColonForOpenTSComment
+                                    ? BlockCommentDelimiterType.singleColonForOpenTsComment
+                                    : BlockCommentDelimiterType.doubleColonForOpenTsComment
                             );
                             pos += colonCount;
                             // console.log('  ts opening comment skip'); // BUILDLESS: DEBUG: comment-scan
@@ -3348,7 +3382,7 @@ function commentScan(text: string, start: number, end: number, stopOnSignificant
                         }
                     }
 
-                    onCommentDelimiter?.(saveStartPos, BlockCommentDelimiterType.openNonTSComment)
+                    onCommentDelimiter?.(saveStartPos, BlockCommentDelimiterType.openNonTsComment)
                     // console.log('  non-ts block comment skip'); // BUILDLESS: DEBUG: comment-scan
                     while (pos < end) {
                         const ch = text.charCodeAt(pos);
@@ -3376,8 +3410,8 @@ function commentScan(text: string, start: number, end: number, stopOnSignificant
     }
 }
 
-export type TSCommentScanner = ReturnType<typeof createTSCommentScanner>;
-export type TSSyntaxTracker = ReturnType<typeof createTSSyntaxTracker>;
+export type TsCommentScanner = ReturnType<typeof createTSCommentScanner>;
+export type TsSyntaxTracker = ReturnType<typeof createTSSyntaxTracker>;
 // BUILDLESS: </added>
 
 /** @internal */

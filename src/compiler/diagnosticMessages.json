@@ -15,6 +15,10 @@
         "category": "Error",
         "code": 99903
     },
+    "JavaScript syntax can not be used inside of a TS comment": {
+        "category": "Error",
+        "code": 99904
+    },
     "Unterminated string literal.": {
         "category": "Error",
         "code": 1002

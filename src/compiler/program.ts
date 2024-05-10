@@ -311,6 +311,7 @@ import {
     supportedJSExtensionsFlat,
     SymlinkCache,
     SyntaxKind,
+    SyntaxRangeType, // BUILDLESS: added
     sys,
     System,
     targetOptionDeclaration,
@@ -319,10 +320,10 @@ import {
     toPath as ts_toPath,
     trace,
     tracing,
-    TSCommentPosition, // BUILDLESS: added
-    TSCommentScanner, // BUILDLESS: added
+    TsCommentPosition, // BUILDLESS: added
+    TsCommentScanner, // BUILDLESS: added
     TsConfigSourceFile,
-    TSNodePosition, // BUILDLESS: added
+    TsSyntaxTracker, // BUILDLESS: added
     TypeChecker,
     typeDirectiveIsEqualTo,
     TypeReferenceDirectiveResolutionCache,
@@ -334,7 +335,7 @@ import {
     walkUpParenthesizedExpressions,
     WriteFileCallback,
     WriteFileCallbackData,
-    writeFileEnsuringDirectories
+    writeFileEnsuringDirectories,
 } from "./_namespaces/ts";
 import * as performance from "./_namespaces/ts.performance";
 
@@ -3033,16 +3034,17 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
     function getJSSyntacticDiagnosticsForFile(sourceFile: SourceFile): DiagnosticWithLocation[] {
         return runWithCancellationToken(() => {
             const diagnostics: DiagnosticWithLocation[] = [];
-            const tsCommentScanner = createTSCommentScanner(sourceFile, options); // BUILDLESS: added
-            const tsSyntaxTracker = createTSSyntaxTracker(sourceFile, options); // BUILDLESS: added
+            const tsCommentScanner = createTSCommentScanner(sourceFile); // BUILDLESS: added
+            const tsSyntaxTracker = createTSSyntaxTracker(sourceFile); // BUILDLESS: added
             walk(sourceFile, sourceFile);
             forEachChildRecursively(sourceFile, walk, walkArray);
+            lookForJavaScriptInsideOfTSComments(tsSyntaxTracker, tsCommentScanner.getTSCommentPositions()); // BUILDLESS: added
 
             // BUILDLESS: <added>
             if (options.buildlessEject) {
                 ejectBuildlessFile(sourceFile, tsCommentScanner.getTSCommentPositions());
             } else if (options.buildlessConvert) {
-                convertToBuildlessFile(sourceFile, tsSyntaxTracker.getTSNodePositions(), tsCommentScanner.getBlockCommentDelimiters());
+                convertToBuildlessFile(sourceFile, tsSyntaxTracker, tsCommentScanner.getBlockCommentDelimiters());
             }
             // BUILDLESS: </added>
 
@@ -3050,14 +3052,11 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
 
             function walk(node: Node, parent: Node) {
                 // BUILDLESS: <added>
-                const isLeaf = isLeafNode(node);
-                try {
-                    return walkHelper(node, parent);
-                } finally {
-                    if (isLeaf) {
-                        tsCommentScanner.scanThroughLeafNode(node);
-                    }
+                const maybeSkip: 'skip' | undefined = walkHelper(node, parent);
+                if (isLeafNode(node)) {
+                    tsCommentScanner.scanThroughLeafNode(node);
                 }
+                return maybeSkip;
             }
 
             function walkHelper(node: Node, parent: Node) {
@@ -3116,7 +3115,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                             clonedTsCommentScanner.scanUntilAtChar([')', ','], Infinity);
                             const scannerIndex = clonedTsCommentScanner.getCurrentPos();
                             if (sourceFile.text[scannerIndex] === ',') {
-                                tsSyntaxTracker.markRangeAsTS(scannerIndex, scannerIndex + 1);
+                                tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(scannerIndex, scannerIndex + 1);
                             }
                         }
                         // BUILDLESS: </added>
@@ -3209,7 +3208,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                             // Mark the comma as TypeScript syntax as well.
                             const scannerIndex = tsCommentScanner.getCurrentPos();
                             if (sourceFile.text[scannerIndex] === ',') {
-                                tsSyntaxTracker.markRangeAsTS(scannerIndex, scannerIndex + 1);
+                                tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(scannerIndex, scannerIndex + 1);
                             }
                             // BUILDLESS: </added>
                             diagnostics.push(createDiagnosticForNode(node, Diagnostics._0_declarations_can_only_be_used_in_TypeScript_files, isImportSpecifier(node) ? "import...type" : "export...type"));
@@ -3242,7 +3241,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                             // Move past the "m" of "from"
                             clonedTsCommentScanner.scanUntilPastChar('m', importDeclaration.end);
                             const afterFromPos = clonedTsCommentScanner.getCurrentPos();
-                            tsSyntaxTracker.markRangeAsTS(beforeFromPos, afterFromPos);
+                            tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(beforeFromPos, afterFromPos);
                         }
                         break;
                     }
@@ -3305,7 +3304,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                         // Scan through the non-null assertion node's children (omitting itself)
                         scanLeavesCheckingIfInTsComment((node as NonNullExpression).expression, IsTSSyntax.no, clonedScanner);
                         // Now scan to the end of this non-null node, which will cause the "!" to be scanned
-                        tsSyntaxTracker.markRangeAsTS(clonedScanner.getCurrentPos(), node.end);
+                        tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(clonedScanner.getCurrentPos(), node.end);
                         const exclamationMarkInTSComment = clonedScanner.scanTo(node.end);
                         if (exclamationMarkInTSComment) {
                             // Don't return "skip", we need to descend into the children to check for problems.
@@ -3388,7 +3387,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                             // Scan until just before ">" (which has the same effect as scanning until just after)
                             const greaterThanInTSComment = tsCommentScanner.scanUntilNextSignificantChar(parent.end);
                             const endOfParameterListPos = tsCommentScanner.getCurrentPos() + 1; // + 1 to move past the ">"
-                            tsSyntaxTracker.markRangeAsTS(startOfParameterListPos, endOfParameterListPos);
+                            tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(startOfParameterListPos, endOfParameterListPos);
                             if (lessThanInTSComment && contentInTSComment && greaterThanInTSComment) return "skip";
                             // BUILDLESS: </added>
                             diagnostics.push(createDiagnosticForNodeArray(nodes, Diagnostics.Type_parameter_declarations_can_only_be_used_in_TypeScript_files));
@@ -3452,7 +3451,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                             // Scan until just before ">" (which has the same effect as scanning until just after)
                             const greaterThanInTSComment = tsCommentScanner.scanUntilNextSignificantChar(parent.end);
                             const endOfParameterListPos = tsCommentScanner.getCurrentPos() + 1; // + 1 to move past the ">"
-                            tsSyntaxTracker.markRangeAsTS(startOfParameterListPos, endOfParameterListPos);
+                            tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(startOfParameterListPos, endOfParameterListPos);
                             if (lessThanInTSComment && contentInTSComment && greaterThanInTSComment) return "skip";
                             // BUILDLESS: </added>
                             diagnostics.push(createDiagnosticForNodeArray(nodes, Diagnostics.Type_arguments_can_only_be_used_in_TypeScript_files));
@@ -3533,7 +3532,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                 isTSSyntax = IsTSSyntax.yes,
                 // By default it uses the comment scanner from the outer scope,
                 // but you can supply an alternative one if, for example, you cloned it.
-                commentScanner: TSCommentScanner = tsCommentScanner
+                commentScanner: TsCommentScanner = tsCommentScanner
             ): boolean {
                 const startPos = rootNodes.pos;
                 const endPos = rootNodes.end;
@@ -3541,10 +3540,10 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                 let fullyInTsComment = true;
                 if (rootNodesArray.length > 0) {
                     if (isTSSyntax === IsTSSyntax.yes) {
-                        tsSyntaxTracker.markRangeAsTS(startPos, endPos);
+                        tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(startPos, endPos);
                     }
                     if (isTSSyntax === IsTSSyntax.yesAndSoIsEarlierUnscannedContent) {
-                        tsSyntaxTracker.markRangeAsTS(commentScanner.getCurrentPos(), endPos);
+                        tsSyntaxTracker.skipWhitespaceThenMarkRangeAsTS(commentScanner.getCurrentPos(), endPos);
                         const significantTextInTypeScriptComment = commentScanner.scanTo(startPos);
                         fullyInTsComment &&= significantTextInTypeScriptComment;
                     }
@@ -3569,7 +3568,60 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                 return fullyInTsComment;
             }
 
-            function ejectBuildlessFile(sourceFile: SourceFile, tsCommentPositions: TSCommentPosition[]) {
+            function lookForJavaScriptInsideOfTSComments(
+                tsSyntaxTracker: TsSyntaxTracker,
+                tsCommentPositions: TsCommentPosition[],
+            ) {
+                let tsCommentPositionIndex = 0
+                for (const syntaxRange of tsSyntaxTracker.getSyntaxRanges()) {
+                    if (syntaxRange.type !== SyntaxRangeType.javaScript) continue;
+                    const jsSyntaxStart = syntaxRange.start;
+                    const jsSyntaxEnd = syntaxRange.end;
+                    while (true) {
+                        const tsCommentPosition: TsCommentPosition | undefined = tsCommentPositions[tsCommentPositionIndex];
+                        // If undefined, then there are no more TS comments to check for error with, so we can do an early return.
+                        if (tsCommentPosition === undefined) return;
+                        if (tsCommentPosition.colonPos + tsCommentPosition.colonCount > jsSyntaxEnd) break;
+                        tsCommentPositionIndex++;
+                        if (tsCommentPosition.close < jsSyntaxStart) continue;
+
+                        let startErrorRange = tsCommentPosition.colonPos + tsCommentPosition.colonCount;
+                        let endErrorRange = tsCommentPosition.close;
+                        if (startErrorRange < jsSyntaxStart) startErrorRange = jsSyntaxStart;
+                        if (endErrorRange > jsSyntaxEnd) endErrorRange = jsSyntaxEnd;
+                        if (startErrorRange === endErrorRange) continue;
+
+                        // Ignoring whitespace because the whitespace tracking isn't very accurate.
+                        // Ignoring commas, because whether or not the comma should be there is a fairly difficult question to answer.
+                        // For example, with:
+                        //    import type { a /*::, type b, */ c } from '...';
+                        // it would be a syntax error, because, ignoring the comment, there's no commas between "a" and "c",
+                        // but which of the two commas inside the comment is JavaScript syntax and which is TypeScript?
+                        // TODO: It still would be good to decide on some way to report an error in this kind of scenario.
+                        while (startErrorRange < endErrorRange) {
+                            const char = sourceFile.text[startErrorRange];
+                            if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === ',') {
+                                startErrorRange++;
+                            } else {
+                                break;
+                            }
+                        }
+                        while (endErrorRange > startErrorRange) {
+                            const char = sourceFile.text[endErrorRange];
+                            if (char === ' ' || char === '\t' || char === '\n' || char === '\r' || char === ',') {
+                                endErrorRange++;
+                            } else {
+                                break;
+                            }
+                        }
+                        if (startErrorRange === endErrorRange) continue;
+                     
+                        diagnostics.push(createFileDiagnostic(sourceFile, startErrorRange, endErrorRange - startErrorRange, Diagnostics.JavaScript_syntax_can_not_be_used_inside_of_a_TS_comment));
+                    }
+                }
+            }
+
+            function ejectBuildlessFile(sourceFile: SourceFile, tsCommentPositions: TsCommentPosition[]) {
                 const fs = require('fs');
 
                 interface TextSpan {
@@ -3664,13 +3716,15 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
 
             function convertToBuildlessFile(
                 sourceFile: SourceFile,
-                tsNodePositionsRaw: TSNodePosition[],
+                tsSyntaxTracker: TsSyntaxTracker,
                 blockCommentDelimiters: Map<number, BlockCommentDelimiterType>
             ) {
                 const fs = require('fs');
                 const text = sourceFile.text;
 
-                interface TSNodePositionWithMetadata extends TSNodePosition {
+                interface TSSyntaxRange {
+                    start: number
+                    end: number
                     openCommentIsFirstOnLine: boolean
                     closeCommentIsLastOnLine: boolean
                     multiline: boolean
@@ -3683,26 +3737,28 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                 }
 
                 // Add metadata to the TS node positions
-                const tsNodePositionsRaw2: TSNodePositionWithMetadata[] = tsNodePositionsRaw.map(tsNodePosition => {
-                    const maybeStartOfLineIndex = tryMoveToStartOfLine(text, tsNodePosition.start, /*moveOnIndex*/ false);
-                    const openCommentIsFirstOnLine = maybeStartOfLineIndex !== undefined;
-                    const openCommentIndent = maybeStartOfLineIndex !== undefined
-                        ? text.slice(maybeStartOfLineIndex, tsNodePosition.start)
-                        : undefined;
+                const tsSyntaxRanges: TSSyntaxRange[] = [...tsSyntaxTracker.getSyntaxRanges()]
+                    .filter(syntaxRange => syntaxRange.type === SyntaxRangeType.typeScript)
+                    .map(tsSyntaxRange => {
+                        const maybeStartOfLineIndex = tryMoveToStartOfLine(text, tsSyntaxRange.start, /*moveOnIndex*/ false);
+                        const openCommentIsFirstOnLine = maybeStartOfLineIndex !== undefined;
+                        const openCommentIndent = maybeStartOfLineIndex !== undefined
+                            ? text.slice(maybeStartOfLineIndex, tsSyntaxRange.start)
+                            : undefined;
 
-                    const closeCommentIsLastOnLine = tryMoveToEndOfLine(text, tsNodePosition.end) !== undefined;
+                        const closeCommentIsLastOnLine = tryMoveToEndOfLine(text, tsSyntaxRange.end) !== undefined;
 
-                    const multiline = text.slice(tsNodePosition.start, tsNodePosition.end).includes('\n');
+                        const multiline = text.slice(tsSyntaxRange.start, tsSyntaxRange.end).includes('\n');
 
-                    return { ...tsNodePosition, openCommentIsFirstOnLine, closeCommentIsLastOnLine, multiline, openCommentIndent };
-                });
+                        return { ...tsSyntaxRange, openCommentIsFirstOnLine, closeCommentIsLastOnLine, multiline, openCommentIndent };
+                    });
 
                 // Merge node-positions that are next to each other.
-                const tsNodePositions: TSNodePositionWithMetadata[] = [];
-                if (tsNodePositionsRaw2.length > 0) {
-                    tsNodePositions.push(tsNodePositionsRaw2.shift()!);
-                    for (const tsNodePosition of tsNodePositionsRaw2) {
-                        const lastNodePosition = tsNodePositions.at(-1)!;
+                const tsSyntaxRanges2: TSSyntaxRange[] = [];
+                if (tsSyntaxRanges.length > 0) {
+                    tsSyntaxRanges2.push(tsSyntaxRanges.shift()!);
+                    for (const tsNodePosition of tsSyntaxRanges) {
+                        const lastNodePosition = tsSyntaxRanges2.at(-1)!;
                         const textInBetween = text.slice(lastNodePosition.end, tsNodePosition.start);
                         let merged = false;
 
@@ -3725,16 +3781,16 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                         }
 
                         if (!merged) {
-                            tsNodePositions.push(tsNodePosition);
+                            tsSyntaxRanges2.push(tsNodePosition);
                         }
                     }
                 }
 
                 // Calculate text to insert
                 const textInserts: TextInsert[] = [];
-                for (const tsNodePosition of tsNodePositions) {
-                    let moveDelimitersOnTheirOwnLine = tsNodePosition.multiline && tsNodePosition.openCommentIsFirstOnLine && tsNodePosition.closeCommentIsLastOnLine;
-                    const maybeColonIndex = lookForChar(text, ':', [' '], tsNodePosition.start, tsNodePosition.end);
+                for (const tsSyntaxRange of tsSyntaxRanges2) {
+                    let moveDelimitersOnTheirOwnLine = tsSyntaxRange.multiline && tsSyntaxRange.openCommentIsFirstOnLine && tsSyntaxRange.closeCommentIsLastOnLine;
+                    const maybeColonIndex = lookForChar(text, ':', [' '], tsSyntaxRange.start, tsSyntaxRange.end);
                     if (maybeColonIndex !== undefined) {
                         moveDelimitersOnTheirOwnLine = false; // `/*:-style comments won't go on a line of their own
                         textInserts.push({
@@ -3744,21 +3800,21 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                     }
                     else if (moveDelimitersOnTheirOwnLine) {
                         textInserts.push({
-                            at: tsNodePosition.start,
-                            value: `/*::\n${tsNodePosition.openCommentIndent}`,
+                            at: tsSyntaxRange.start,
+                            value: `/*::\n${tsSyntaxRange.openCommentIndent}`,
                         });
                     }
                     else {
-                        const maybeQuestionMarkIndex = lookForChar(text, '?', [' '], tsNodePosition.start, tsNodePosition.end);
-                        const maybeExclamationMarkIndex = lookForChar(text, '!', [' '], tsNodePosition.start, tsNodePosition.end);
+                        const maybeQuestionMarkIndex = lookForChar(text, '?', [' '], tsSyntaxRange.start, tsSyntaxRange.end);
+                        const maybeExclamationMarkIndex = lookForChar(text, '!', [' '], tsSyntaxRange.start, tsSyntaxRange.end);
                         // Is this a "?:" or "!:" annotation? If so, we'll handle white-space a little differently.
                         const isTypeAnnotation = (
                             (maybeQuestionMarkIndex !== undefined && text[maybeQuestionMarkIndex + 1] === ':') ||
                             (maybeExclamationMarkIndex !== undefined && text[maybeExclamationMarkIndex + 1] === ':')
                         );
-                        const spaceBefore = text[tsNodePosition.start - 1] === ' ';
+                        const spaceBefore = text[tsSyntaxRange.start - 1] === ' ';
                         textInserts.push({
-                            at: tsNodePosition.start,
+                            at: tsSyntaxRange.start,
                             value: isTypeAnnotation && !spaceBefore ? ' /*:: ' : '/*:: ',
                         });
                     }
@@ -3766,7 +3822,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                     // Special handling for inner block comments.
                     // If the range we want to comment out contains a `/* ... */`, we'll
                     // want to add a `/*::` after the `*/` to bring us back into TS-comment land.
-                    for (let i = tsNodePosition.start + 1; i < tsNodePosition.end - 1; i++) {
+                    for (let i = tsSyntaxRange.start + 1; i < tsSyntaxRange.end - 1; i++) {
                         const delimiter = blockCommentDelimiters.get(i);
                         if (delimiter === BlockCommentDelimiterType.close) {
                             textInserts.push({
@@ -3778,13 +3834,13 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
 
                     if (moveDelimitersOnTheirOwnLine) {
                         textInserts.push({
-                            at: tsNodePosition.end,
-                            value: `\n${tsNodePosition.openCommentIndent}*/`,
+                            at: tsSyntaxRange.end,
+                            value: `\n${tsSyntaxRange.openCommentIndent}*/`,
                         });
                     }
                     else {
                         textInserts.push({
-                            at: tsNodePosition.end,
+                            at: tsSyntaxRange.end,
                             value: ' */',
                         });
                     }

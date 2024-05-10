@@ -8896,7 +8896,7 @@ declare namespace ts {
     function isIdentifierStart(ch: number, languageVersion: ScriptTarget | undefined): boolean;
     function isIdentifierPart(ch: number, languageVersion: ScriptTarget | undefined, identifierVariant?: LanguageVariant): boolean;
     function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean, languageVariant?: LanguageVariant, textInitial?: string, onError?: ErrorCallback, start?: number, length?: number): Scanner;
-    function createTSCommentScanner({ text }: SourceFileLike, options: CompilerOptions, _pos?: number, _state?: TSCommentScannerState, _delimiterPositions?: BlockCommentDelimiterPositions): {
+    function createTSCommentScanner({ text }: SourceFileLike, _pos?: number, _state?: TsCommentScannerState, _delimiterPositions?: BlockCommentDelimiterPositions): {
         getCurrentPos(): number;
         /**
          * The state of the scanner is cloned, so you can move forwards with the clone to inspect something in the future
@@ -8954,28 +8954,27 @@ declare namespace ts {
         /**
          * Returns all TS-comment pairs in the file.
          * Prerequisites:
-         * - The --buildlessEject or --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
          * - The whole source file has been scanned.
          */
-        getTSCommentPositions(): TSCommentPosition[];
+        getTSCommentPositions(): TsCommentPosition[];
     };
     /**
      * Tracks which spans in a file pertain to TypeScript syntax.
      * This is used to convert TypeScript files to JavaScript + TS comments.
      */
-    function createTSSyntaxTracker({ text }: SourceFileLike, options: CompilerOptions): {
+    function createTSSyntaxTracker({ text }: SourceFileLike): {
         /**
          * This range is TypeScript syntax, and if we're converting TS to buildless JS files,
          * this range should be moved into TS comments.
-         * whitespace/comments will be skipped to find the true start.
+         * whitespace/comments at the start will get recorded as whitespace.
          */
-        markRangeAsTS(start: number, end: number): void;
+        skipWhitespaceThenMarkRangeAsTS(start: number, end: number): void;
         /**
-         * Returns the positions of all TS nodes in the file.
-         * Prerequisites:
-         * - The --buildlessConvert flag must be set (otherwise the needed information does not get recorded)
+         * Returns where all TypeScript and JavaScript syntax is located in the file.
+         * The returned ranges will either be marked as a TypeScript range or a JavaScript range.
+         * Ranges of whitespace won't be returned.
          */
-        getTSNodePositions(): TSNodePosition[];
+        getSyntaxRanges(): Generator<SyntaxRange>;
     };
     type ErrorCallback = (message: DiagnosticMessage, length: number, arg0?: any) => void;
     interface Scanner {
@@ -9029,25 +9028,31 @@ declare namespace ts {
         tryScan<T>(callback: () => T): T;
     }
     enum BlockCommentDelimiterType {
-        openNonTSComment = 0,
-        openTSCommentWithoutColons = 1,
-        singleColonForOpenTSComment = 2,
-        doubleColonForOpenTSComment = 3,
+        openNonTsComment = 0,
+        openTsCommentWithoutColons = 1,
+        singleColonForOpenTsComment = 2,
+        doubleColonForOpenTsComment = 3,
         close = 4,
     }
-    interface TSCommentPosition {
+    interface TsCommentPosition {
         open: number;
         colonPos: number;
         close: number;
         colonCount: 1 | 2;
         containedInnerOpeningBlockComment: boolean;
     }
-    interface TSNodePosition {
+    enum SyntaxRangeType {
+        typeScript = 0,
+        javaScript = 1,
+        whitespace = 2,
+    }
+    interface SyntaxRange {
         start: number;
         end: number;
+        type: SyntaxRangeType;
     }
-    type TSCommentScanner = ReturnType<typeof createTSCommentScanner>;
-    type TSSyntaxTracker = ReturnType<typeof createTSSyntaxTracker>;
+    type TsCommentScanner = ReturnType<typeof createTSCommentScanner>;
+    type TsSyntaxTracker = ReturnType<typeof createTSSyntaxTracker>;
     function isExternalModuleNameRelative(moduleName: string): boolean;
     function sortAndDeduplicateDiagnostics<T extends Diagnostic>(diagnostics: readonly T[]): SortedReadonlyArray<T>;
     function getDefaultLibFileName(options: CompilerOptions): string;
