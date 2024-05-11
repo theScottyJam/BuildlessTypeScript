@@ -2,6 +2,8 @@ import {
     append,
     arraysEqual,
     binarySearch,
+    BlockCommentDelimiterPositions, // BUILDLESS: added
+    BlockCommentDelimiterType, // BUILDLESS: added
     CharacterCodes,
     CommentDirective,
     CommentDirectiveType,
@@ -27,6 +29,7 @@ import {
     SourceFileLike,
     SyntaxKind,
     TokenFlags,
+    TsCommentScannerState, // BUILDLESS: added
 } from "./_namespaces/ts";
 
 export type ErrorCallback = (message: DiagnosticMessage, length: number, arg0?: any) => void;
@@ -121,14 +124,6 @@ export interface Scanner {
 }
 
 // BUILDLESS: <added>
-export const enum BlockCommentDelimiterType {
-    openNonTsComment, // A `/*` not followed by colons
-    openTsCommentWithoutColons, // Just the `/*` part of `/*:` or `/*::`.
-    singleColonForOpenTsComment, // Just the `:` part of `/*:`
-    doubleColonForOpenTsComment, // Just the `::` part of `/*::`
-    close, // Any `*/`, even if it pertains to a non-TS comment.
-}
-
 export interface TsCommentPosition {
     open: number;
     colonPos: number;
@@ -150,11 +145,6 @@ export const enum SyntaxRangeType {
     javaScript,
     whitespace,
 }
-
-// Records the position of interesting comment-related information.
-// When an openTSCommentWithoutColons is recorded, it will be followed by
-// either a singleColonForOpenTSComment or doubleColonForOpenTSComment.
-type BlockCommentDelimiterPositions = Map<number, BlockCommentDelimiterType>
 
 export interface TsCommentScanner {
     getCurrentPos(): number;
@@ -3032,12 +3022,6 @@ export function createScanner(languageVersion: ScriptTarget, skipTrivia: boolean
 }
 
 // BUILDLESS: <added>
-const enum TsCommentScannerState {
-    notInComment,
-    inBlockComment,
-    inTSBlockComment,
-}
-
 export function createTSCommentScanner(
     { text }: SourceFileLike,
     _pos?: number,
