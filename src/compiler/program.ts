@@ -3092,7 +3092,7 @@ export function createProgram(rootNamesOrOptions: readonly string[] | CreateProg
                         if ((parent as ImportDeclaration).importClause === node) {
                             if ((node as ImportClause).isTypeOnly) {
                                 if (scanLeavesCheckingIfInTsComment(parent)) return "skip"; // BUILDLESS: added
-                                diagnostics.push(createDiagnosticForNode(node, Diagnostics._0_declarations_can_only_be_used_in_TypeScript_files, "import type"));
+                                diagnostics.push(createDiagnosticForNode(parent, Diagnostics._0_declarations_can_only_be_used_in_TypeScript_files, "import type"));
                                 return "skip";
                             }
                         }
