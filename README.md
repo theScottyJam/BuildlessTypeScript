@@ -154,7 +154,6 @@ If you want to eject to JavaScript instead of TypeScript, that can be done throu
 
 Known low-priority issues. There are plans to fix these issues in the future.
 * You must use the `as` keyword to do type assertions. Old-style angle-bracket assertions (e.g. `<number>myNumber`) do not work.
-* It may allow you to put JavaScript syntax inside of TS comments without reporting a syntax error.
 * If you put TypeScript syntax in a JavaScript file, it will tell you to move it to a TypeScript file. What it should say instead is to move it into a TS comment.
 
 Known limitations. There are currently no plans to change these - mostly in an effort to keep this fork from getting too complicated.
